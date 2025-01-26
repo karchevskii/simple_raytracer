@@ -2,17 +2,13 @@ FRAGMENT_SHADER = """
 #version 330 core
 out vec4 FragColor;
 
-// ================================================================================
-// Uniforms and Constants
-// ================================================================================
-
 uniform vec2 resolution;
 uniform float time;
 uniform vec3 camera_pos;
 uniform vec3 camera_dir;
 
 const int NUM_LIGHTS = 5;
-const int NUM_SPHERES = 4;
+const int NUM_SPHERES = 27;
 
 float fov = 45.0; // in degrees
 float focal = tan(radians(fov) / 2.0);
@@ -44,7 +40,7 @@ struct Plane {
 // Scene data (we'll fill these in initScene)
 Sphere spheres[NUM_SPHERES];
 Plane plane;
-int maxBounces = 10;
+int maxBounces = 6;
 
 // Basic ambient
 vec3 ambient = vec3(0.05);
@@ -341,9 +337,6 @@ vec3 traceRay(vec3 ro, vec3 rd) {
     return colorAccum;
 }
 
-// ================================================================================
-// main
-// ================================================================================
 
 void initScene() {
     // Spheres
@@ -384,12 +377,58 @@ void initScene() {
         vec3(0.0)
     );
 
+
+
+    float ringRadius = 3.5;
+    int ringCount = 23;
+    for(int i = 0; i < ringCount; i++){
+        // We'll store them in indices [4..26]
+        int sIndex = 4 + i;
+
+        // angle around circle
+        float angle = 2.0 * 3.14159 * float(i) / float(ringCount);
+
+        // position on circle
+        float xPos = ringRadius * cos(angle);
+        float zPos = 3.5 + ringRadius * sin(angle);
+
+        // slightly vary radius between 0.15 and 0.20
+        float rad = (i % 2 == 0) ? 0.20 : 0.15;
+        float yPos = -1.0 + rad;  // sits on plane
+
+        // pick a color in a pseudo-random way
+        vec3 col = vec3(
+            0.3 + 0.7 * fract(sin(float(i)*12.345)*9876.543), // randomish red
+            0.3 + 0.7 * fract(sin(float(i)*3.217)*5432.123),  // randomish green
+            0.3 + 0.7 * fract(sin(float(i)*5.789)*6543.234)   // randomish blue
+        );
+
+        // reflectivity or transparency also randomish
+        float refl = 0.1 + 0.4*fract(sin(float(i)*1.111)*777.0);   // between 0.1..0.5
+        float transp = 0.2 * fract(sin(float(i)*2.222)*123.0);     // between 0..0.2
+        float iorVal = 1.0 + 0.5*fract(sin(float(i)*4.444)*987.0); // between 1..1.5
+
+        spheres[sIndex] = Sphere(
+            vec3(xPos, yPos, zPos),
+            rad,
+            col,
+            refl,
+            transp,
+            iorVal,
+            vec3(0.0) // no absorption for now
+        );
+    }
+
+
+
+
+
     // Plane
     plane = Plane(
         vec3(0.0, -1.0, 0.0), // point
         vec3(0.0, 1.0, 0.0),  // normal
-        vec3(0.32, 0.18, 0.26),
-        0.3 // reflectivity
+        vec3(0.32, 0.18, 0.26), // color
+        0.4 // reflectivity
     );
 }
 

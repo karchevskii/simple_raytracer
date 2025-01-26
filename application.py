@@ -2,7 +2,7 @@ import glfw
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 import numpy as np
-from test_shader import FRAGMENT_SHADER
+from fragment_shader import FRAGMENT_SHADER
 from vertex_shader import VERTEX_SHADER
 from utils import mouse_callback
 from camera import Camera
