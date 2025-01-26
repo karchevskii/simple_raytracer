@@ -378,15 +378,14 @@ void initScene() {
     );
 
 
-
+    // Random spheres on a circle
     float ringRadius = 3.5;
     int ringCount = 23;
     for(int i = 0; i < ringCount; i++){
-        // We'll store them in indices [4..26]
         int sIndex = 4 + i;
 
         // angle around circle
-        float angle = 2.0 * 3.14159 * float(i) / float(ringCount);
+        float angle = 2.0 * 3.14159 * float(i) / float(ringCount); 
 
         // position on circle
         float xPos = ringRadius * cos(angle);
@@ -396,7 +395,6 @@ void initScene() {
         float rad = (i % 2 == 0) ? 0.20 : 0.15;
         float yPos = -1.0 + rad;  // sits on plane
 
-        // pick a color in a pseudo-random way
         vec3 col = vec3(
             0.3 + 0.7 * fract(sin(float(i)*12.345)*9876.543), // randomish red
             0.3 + 0.7 * fract(sin(float(i)*3.217)*5432.123),  // randomish green
