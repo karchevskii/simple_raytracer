@@ -2,13 +2,13 @@ import numpy as np
 import glfw
 
 class Camera:
-    def __init__(self, position, yaw=90.0, pitch=0.0, speed=0.1, sensitivity=0.1):
+    def __init__(self, position, yaw=90.0, pitch=0.0, speed=0.1, sensitivity=0.1, direction=[0.0, 0.0, -1.0]):
         self.position = np.array(position, dtype=np.float32)
         self.yaw = yaw
         self.pitch = pitch
         self.speed = speed
         self.sensitivity = sensitivity
-        self.direction = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+        self.direction = np.array(direction, dtype=np.float32)
         self.update_direction()
 
     def update_direction(self):

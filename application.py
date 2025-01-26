@@ -13,7 +13,7 @@ class Application:
         self.width = width
         self.height = height
         self.title = title
-        self.camera = Camera(position=[-1.5, 0.0, -2.0])
+        self.camera = Camera(position=[-0.63, -0.2, -2.6], direction=[-0.4, -0.4,  0.8], yaw=116.0, pitch=-23.0)
         self.lastX = width / 2
         self.lastY = height / 2
         self.first_mouse = True
@@ -118,6 +118,9 @@ class Application:
             glBindVertexArray(0)
 
             glfw.swap_buffers(self.window)
+
+            # debug
+            # print(self.camera.position, self.camera.direction, self.camera.yaw, self.camera.pitch)
 
         self.cleanup()
 
