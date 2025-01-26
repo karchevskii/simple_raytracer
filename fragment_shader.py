@@ -2,22 +2,27 @@ FRAGMENT_SHADER = """
 #version 330 core
 out vec4 FragColor;
 
+// ================================================================================
+// Uniforms and Constants
+// ================================================================================
+
 uniform vec2 resolution;
 uniform float time;
 uniform vec3 camera_pos;
 uniform vec3 camera_dir;
+
 const int NUM_LIGHTS = 5;
+const int NUM_SPHERES = 4;
+
+float fov = 45.0; // in degrees
+float focal = tan(radians(fov) / 2.0);
 
 struct Light {
     vec3 position;
     vec3 color;
 };
 
-// Define lights
 uniform Light lights[NUM_LIGHTS];
-
-// Increase the number of spheres
-const int NUM_SPHERES = 4;
 
 struct Sphere {
     vec3 center;
@@ -36,6 +41,20 @@ struct Plane {
     float reflectivity;
 };
 
+// Scene data (we'll fill these in initScene)
+Sphere spheres[NUM_SPHERES];
+Plane plane;
+int maxBounces = 10;
+
+// Basic ambient
+vec3 ambient = vec3(0.05);
+
+
+vec3 getSkyColor(vec3 rd) {
+    float t = 0.5 * (rd.y + 1.0);
+    return mix(vec3(0.5, 0.6, 0.8), vec3(0.0, 0.0, 0.3), t);
+}
+
 float sphereIntersection(vec3 ro, vec3 rd, Sphere sphere, out vec3 hitNormal) {
     vec3 oc = ro - sphere.center;
     float b = dot(oc, rd);
@@ -44,199 +63,352 @@ float sphereIntersection(vec3 ro, vec3 rd, Sphere sphere, out vec3 hitNormal) {
     if (h < 0.0) return -1.0;
     float t = -b - sqrt(h);
     if (t > 0.0) {
-        hitNormal = normalize((ro + rd * t) - sphere.center);
+        vec3 hitPos = ro + rd * t;
+        hitNormal = normalize(hitPos - sphere.center);
         return t;
     }
     return -1.0;
 }
 
-float planeIntersection(vec3 ro, vec3 rd, Plane plane, out vec3 hitNormal) {
-    float denom = dot(rd, plane.normal);
+float planeIntersection(vec3 ro, vec3 rd, Plane pl, out vec3 hitNormal) {
+    float denom = dot(rd, pl.normal);
     if (abs(denom) > 0.0001) {
-        float t = dot(plane.point - ro, plane.normal) / denom;
+        float t = dot(pl.point - ro, pl.normal) / denom;
         if (t > 0.0) {
-            hitNormal = plane.normal;
+            hitNormal = pl.normal;
             return t;
         }
     }
     return -1.0;
 }
 
-// Function to compute sky color based on ray direction
-vec3 getSkyColor(vec3 rd) {
-    // Darker sky gradient
-    float t = 0.5 * (rd.y + 1.0);
-    vec3 skyColor = mix(vec3(0.4, 0.6, 0.8), vec3(0.0, 0.0, 0.3), t);
-    return skyColor;
+
+// This returns the fraction of light that is reflected at the interface.
+// totalInternal is set to true if we have total internal reflection.
+float fresnelSchlick(vec3 rd, vec3 n, float iorIn, float iorOut, out bool totalInternal) {
+    totalInternal = false;
+    float cosi = clamp(dot(rd, n), -1.0, 1.0);
+    float etai = iorIn;
+    float etat = iorOut;
+    if (cosi > 0.0) {
+        // we are inside the object looking out
+        float temp = etai;
+        etai = etat;
+        etat = temp;
+        n = -n;
+        cosi = -cosi;
+    }
+    float etaRatio = etai / etat;
+    float sint = etaRatio * sqrt(max(0.0, 1.0 - cosi * cosi));
+    // Check total internal reflection
+    if (sint >= 1.0) {
+        totalInternal = true;
+        return 1.0;
+    } else {
+        float cost = sqrt(max(0.0, 1.0 - sint * sint));
+        cosi = abs(cosi);
+        float Rs = (etat * cosi - etai * cost) / (etat * cosi + etai * cost);
+        float Rp = (etai * cosi - etat * cost) / (etai * cosi + etat * cost);
+        return (Rs * Rs + Rp * Rp) * 0.5;
+    }
 }
 
-void main() {
-    vec2 uv = gl_FragCoord.xy / resolution.xy;
-    uv = uv * 2.0 - 1.0;
-    uv.x *= resolution.x / resolution.y;
+// This is a simple reflection function that does a single bounce.
+vec3 computeReflectionColor(vec3 ro, vec3 rd) {
+    // We do a simple trace: find the nearest object.
+    float nearestT = -1.0;
+    vec3 hitNormal = vec3(0.0);
+    vec3 hitColor  = vec3(0.0);
+    int hitObject  = -1; // 0= Sphere, 1= Plane
+    int hitIndex   = -1;
 
-    vec3 ro = camera_pos;
-    vec3 rd = normalize(camera_dir + vec3(uv, 0.0));
-
-    // Define spheres
-    Sphere spheres[NUM_SPHERES];
-    spheres[0] = Sphere(vec3(-1.5, 0.0, 5.0), 1.0, vec3(1.0, 0.0, 0.0), 0.2, 0.0, 1.0, vec3(0.0));
-    spheres[1] = Sphere(vec3(1.5, 0.0, 6.0), 1.0, vec3(0.0, 0.0, 1.0), 0.8, 0.0, 1.0, vec3(0.0));
-    spheres[2] = Sphere(vec3(0.0, -0.5, 3.0), 0.5, vec3(1.0, 1.0, 1.0), 0.05 , 0.95, 1.3, vec3(0.2));
-    spheres[3] = Sphere(vec3(2.0, -0.3, 3.0), 0.7, vec3(1.0, 1.0, 1.0), 0.05, 0.95, 1.5, vec3(0.2));
-
-    // Define plane
-    Plane plane = Plane(vec3(0.0, -1.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.32, 0.18, 0.26), 0.0);
-
-    vec3 color = vec3(0.0);
-    vec3 attenuation = vec3(1.0);
-    vec3 ambient = vec3(0.05); // Ambient light
-    int maxBounces = 10;
-
-    for (int i = 0; i < maxBounces; i++) {
-        float nearestT = -1.0;
-        vec3 hitNormal = vec3(0.0);
-        vec3 hitColor = vec3(0.0);
-        float hitReflectivity = 0.0;
-        float hitTransparency = 0.0;
-        float hitIOR = 1.0;
-        int hitObjectType = -1; // 0 = sphere, 1 = plane
-        int hitObjectIndex = -1;
-
-        // Sphere intersections
-        for (int j = 0; j < NUM_SPHERES; j++) {
-            vec3 n;
-            float t = sphereIntersection(ro, rd, spheres[j], n);
-            if (t > 0.0 && (t < nearestT || nearestT < 0.0)) {
-                nearestT = t;
-                hitNormal = n;
-                hitColor = spheres[j].color;
-                hitReflectivity = spheres[j].reflectivity;
-                hitTransparency = spheres[j].transparency;
-                hitIOR = spheres[j].ior;
-                hitObjectType = 0;
-                hitObjectIndex = j; // Store the index
-            }
+    // Spheres
+    for (int i = 0; i < NUM_SPHERES; i++) {
+        vec3 n;
+        float t = sphereIntersection(ro, rd, spheres[i], n);
+        if (t > 0.0 && (t < nearestT || nearestT < 0.0)) {
+            nearestT = t;
+            hitNormal = n;
+            hitColor = spheres[i].color;
+            hitObject = 0;
+            hitIndex = i;
         }
+    }
 
-        // Plane intersection
+    // Plane
+    {
         vec3 n;
         float t = planeIntersection(ro, rd, plane, n);
         if (t > 0.0 && (t < nearestT || nearestT < 0.0)) {
             nearestT = t;
             hitNormal = n;
             hitColor = plane.color;
-            hitReflectivity = plane.reflectivity;
-            hitTransparency = 0.0;
-            hitIOR = 1.0;
-            hitObjectType = 1;
-            hitObjectIndex = -1; // No index for plane
+            hitObject = 1;
+            hitIndex = -1;
+        }
+    }
+
+    if (nearestT < 0.0) {
+        // no intersection: return sky color
+        return getSkyColor(rd);
+    }
+
+    // If we hit something, compute direct lighting (ambient + diffuse)
+    vec3 hitPos = ro + rd * nearestT;
+
+    // Simple direct lighting.
+    vec3 totalDiffuse = vec3(0.0);
+    for (int l = 0; l < NUM_LIGHTS; l++) {
+        vec3 lightDir = normalize(lights[l].position - hitPos);
+        // check shadow quickly
+        float shadow = 1.0;
+        // sphere shadow check
+        for (int j = 0; j < NUM_SPHERES; j++) {
+            vec3 tn;
+            float ts = sphereIntersection(hitPos + hitNormal * 0.001, lightDir, spheres[j], tn);
+            if (ts > 0.0) {
+                shadow = 0.0;
+                break;
+            }
+        }
+        // plane shadow check
+        {
+            vec3 tn;
+            float ts = planeIntersection(hitPos + hitNormal * 0.001, lightDir, plane, tn);
+            if (ts > 0.0) {
+                shadow = 0.0;
+            }
+        }
+        float diff = max(dot(hitNormal, lightDir), 0.0) * shadow;
+        totalDiffuse += diff * lights[l].color;
+    }
+
+    vec3 surfaceColor = (totalDiffuse * hitColor) + ambient;
+    return surfaceColor;
+}
+
+
+// This function traces a single ray and returns the accumulated color.
+vec3 traceRay(vec3 ro, vec3 rd) {
+    vec3 colorAccum = vec3(0.0);
+    vec3 attenuation = vec3(1.0);
+
+    for (int bounce = 0; bounce < maxBounces; bounce++) {
+        float nearestT = -1.0;
+        vec3 hitNormal = vec3(0.0);
+        vec3 hitColor = vec3(0.0);
+        float hitReflect = 0.0;
+        float hitTransp  = 0.0;
+        float hitIOR     = 1.0;
+        int hitObjectType = -1; // 0 = sphere, 1 = plane
+        int hitIndex     = -1;
+
+        // Intersect with spheres
+        for (int i = 0; i < NUM_SPHERES; i++) {
+            vec3 n;
+            float t = sphereIntersection(ro, rd, spheres[i], n);
+            if (t > 0.0 && (t < nearestT || nearestT < 0.0)) {
+                nearestT = t;
+                hitNormal = n;
+                hitColor = spheres[i].color;
+                hitReflect = spheres[i].reflectivity;
+                hitTransp  = spheres[i].transparency;
+                hitIOR     = spheres[i].ior;
+                hitObjectType = 0;
+                hitIndex   = i;
+            }
+        }
+        // Intersect with plane
+        {
+            vec3 n;
+            float t = planeIntersection(ro, rd, plane, n);
+            if (t > 0.0 && (t < nearestT || nearestT < 0.0)) {
+                nearestT = t;
+                hitNormal = n;
+                hitColor = plane.color;
+                hitReflect = plane.reflectivity;
+                hitTransp  = 0.0;
+                hitIOR     = 1.0;
+                hitObjectType = 1;
+                hitIndex   = -1;
+            }
         }
 
-        if (nearestT > 0.0) {
-            vec3 hitPoint = ro + rd * nearestT;
+        // If we didn't hit anything, add sky color & end
+        if (nearestT < 0.0) {
+            vec3 sky = getSkyColor(rd);
+            colorAccum += attenuation * sky;
+            break;
+        }
 
-            // Lighting calculations
+        // We hit something
+        vec3 hitPos = ro + rd * nearestT;
+
+        // Direct lighting at the hit
+        {
             vec3 totalDiffuse = vec3(0.0);
             for (int l = 0; l < NUM_LIGHTS; l++) {
-                vec3 lightDir = normalize(lights[l].position - hitPoint);
+                vec3 lightDir = normalize(lights[l].position - hitPos);
                 float shadow = 1.0;
-
-                // Shadow ray for spheres
+                // check shadow
                 for (int j = 0; j < NUM_SPHERES; j++) {
-                    vec3 tempNormal;
-                    float tShadow = sphereIntersection(hitPoint + hitNormal * 0.001, lightDir, spheres[j], tempNormal);
+                    vec3 tn;
+                    float tShadow = sphereIntersection(hitPos + hitNormal * 0.001, lightDir, spheres[j], tn);
                     if (tShadow > 0.0) {
                         shadow = 0.0;
                         break;
                     }
                 }
-
-                // Shadow ray for plane
-                vec3 tempNormal;
-                float tShadowPlane = planeIntersection(hitPoint + hitNormal * 0.001, lightDir, plane, tempNormal);
-                if (tShadowPlane > 0.0) {
-                    shadow = 0.0;
+                {
+                    vec3 tn;
+                    float tShadowPlane = planeIntersection(hitPos + hitNormal * 0.001, lightDir, plane, tn);
+                    if (tShadowPlane > 0.0) {
+                        shadow = 0.0;
+                    }
                 }
-
-                // Diffuse lighting
                 float diff = max(dot(hitNormal, lightDir), 0.0) * shadow;
                 totalDiffuse += diff * lights[l].color;
             }
+            vec3 lighting = totalDiffuse * hitColor + ambient;
+            // add this surface's direct shading to the accumulation
+            colorAccum += attenuation * lighting;
+        }
 
-            vec3 lighting = (totalDiffuse * hitColor) + ambient;
-            color += attenuation * lighting;
+        // Reflection / Refraction logic
+        bool totalInternal = false;
+        float kr = fresnelSchlick(rd, hitNormal, 1.0, hitIOR, totalInternal);
 
-            if (i < maxBounces - 1) {
-                if (hitTransparency > 0.0) {
-                    // Refraction with Fresnel effect
-                    vec3 n = hitNormal;
-                    float cosi = clamp(dot(rd, n), -1.0, 1.0);
-                    float etai = 1.0, etat = hitIOR;
-                    if (cosi > 0.0) {
-                        n = -n;
-                        float temp = etai;
-                        etai = etat;
-                        etat = temp;
-                    }
-                    float etaRatio = etai / etat;
-                    float sint = etaRatio * sqrt(max(0.0, 1.0 - cosi * cosi));
+        // If object is transparent
+        if (hitTransp > 0.0) {
+            // PARTIAL REFLECTION: do a quick reflection sample.
+            if (!totalInternal && kr > 0.0) {
+                vec3 reflectDir = reflect(rd, hitNormal);
+                vec3 reflectOrigin = hitPos + reflectDir * 0.001;
+                vec3 reflectionColor = computeReflectionColor(reflectOrigin, reflectDir);
 
-                    float kr;
-                    // Total internal reflection
-                    if (sint >= 1.0) {
-                        kr = 1.0;
-                    } else {
-                        float cost = sqrt(max(0.0, 1.0 - sint * sint));
-                        cosi = abs(cosi);
-                        float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
-                        float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
-                        kr = (Rs * Rs + Rp * Rp) / 2.0;
-                    }
-
-                    if (kr < 1.0) {
-                        // Refraction
-                        vec3 refractedDir = refract(rd, n, etaRatio);
-                        ro = hitPoint + refractedDir * 0.001;
-                        rd = refractedDir;
-
-                        // Calculate the distance traveled in the medium
-                        float distanceInMedium = nearestT;
-
-                        // Apply Beer–Lambert Law
-                        vec3 absorption = vec3(0.0);
-                        if (hitObjectType == 0 && hitObjectIndex >= 0) {
-                            absorption = spheres[hitObjectIndex].absorption;
-                        }
-                        attenuation *= exp(-absorption * distanceInMedium);
-
-                        attenuation *= (1.0 - kr) * hitColor * hitTransparency;
-                    } else {
-                        // Total internal reflection
-                        vec3 reflectedDir = reflect(rd, n);
-                        ro = hitPoint + reflectedDir * 0.001;
-                        rd = reflectedDir;
-                        attenuation *= kr * hitColor * hitTransparency;
-                    }
-                } else if (hitReflectivity > 0.0) {
-                    // Reflection
-                    attenuation *= hitReflectivity;
-                    ro = hitPoint + hitNormal * 0.001;
-                    rd = reflect(rd, hitNormal);
-                } else {
-                    break;
-                }
-            } else {
-                break;
+                // Weighted add
+                colorAccum += attenuation * reflectionColor * kr * hitReflect;
+            } else if (totalInternal) {
+                // If total internal reflection, reflection is effectively 100%
+                kr = 1.0;
             }
-        } else {
-            // Background (sky) color
-            vec3 skyColor = getSkyColor(rd);
-            color += attenuation * skyColor;
+
+            // Now continue the main path as refraction if not TIR
+            if (kr < 1.0) {
+                // Beer–Lambert
+                float distInMedium = nearestT; // approximate
+                vec3 absorb = vec3(0.0);
+                if (hitObjectType == 0 && hitIndex >= 0) {
+                    absorb = spheres[hitIndex].absorption;
+                }
+                attenuation *= exp(-absorb * distInMedium);
+
+                // scale attenuation by (1-kr)*transparency
+                attenuation *= (1.0 - kr) * hitTransp;
+
+                // Refract
+                vec3 n = hitNormal;
+                float cosi = dot(rd, n);
+                if (cosi > 0.0) n = -n;
+
+                float eta = (cosi > 0.0) ? (hitIOR / 1.0) : (1.0 / hitIOR);
+                vec3 refractDir = refract(rd, n, eta);
+
+                ro = hitPos + refractDir * 0.001;
+                rd = refractDir;
+            } else {
+                // total internal reflection or near total reflection
+                // reflect the main ray
+                attenuation *= hitReflect;
+                vec3 reflectDir = reflect(rd, hitNormal);
+                ro = hitPos + reflectDir * 0.001;
+                rd = reflectDir;
+            }
+        }
+        else if (hitReflect > 0.0) {
+            // Opaque + reflective
+            attenuation *= hitReflect;
+            vec3 reflectDir = reflect(rd, hitNormal);
+            ro = hitPos + reflectDir * 0.001;
+            rd = reflectDir;
+        }
+        else {
+            // Opaque and not reflective => no further bounces, we are done
             break;
         }
-    }
+    } // end bounce loop
 
-    FragColor = vec4(color, 1.0);
+    return colorAccum;
+}
+
+// ================================================================================
+// main
+// ================================================================================
+
+void initScene() {
+    // Spheres
+    spheres[0] = Sphere(
+        vec3(-1.5, 0.0, 5.0), // center
+        1.0,                  // radius
+        vec3(1.0, 0.0, 0.0),  // color
+        0.2,                  // reflectivity
+        0.0,                  // transparency
+        1.0,                  // ior
+        vec3(0.0)            // absorption
+    );
+    spheres[1] = Sphere(
+        vec3(1.5, 0.0, 6.0), // center
+        1.0,                // radius
+        vec3(0.0, 0.0, 1.0),  // color
+        0.8,  // reflectivity
+        0.0,  // transparency
+        1.0,  // ior
+        vec3(0.02) // absorption
+    );
+    spheres[2] = Sphere(
+        vec3(0.0, -0.5, 3.0), // center
+        0.5,                 // radius
+        vec3(0.9, 0.9, 0.9), // color
+        0.2,  // reflectivity
+        0.95, // transparency
+        0.87,  // ior
+        vec3(0.0) // absorption
+    );
+    spheres[3] = Sphere(
+        vec3(2.0, -0.3, 3.0),
+        0.7,
+        vec3(0.7, 0.6, 0.5),
+        0.1,  // reflectivity
+        0.95, // transparency
+        0.87,  // ior
+        vec3(0.0)
+    );
+
+    // Plane
+    plane = Plane(
+        vec3(0.0, -1.0, 0.0), // point
+        vec3(0.0, 1.0, 0.0),  // normal
+        vec3(0.32, 0.18, 0.26),
+        0.3 // reflectivity
+    );
+}
+
+void main(){
+    initScene();
+
+    // Compute normalized screen coords
+    vec2 uv = (gl_FragCoord.xy / resolution.xy) * 2.0 - 1.0;
+    uv.x *= resolution.x / resolution.y;
+
+    // Build initial ray
+    vec3 ro = camera_pos;
+
+    // Simple pinhole camera approach with adjustable FOV
+    uv *= focal;
+    vec3 rd = normalize(camera_dir + vec3(uv, 0.0));
+
+    // Trace!
+    vec3 finalColor = traceRay(ro, rd);
+    FragColor = vec4(finalColor, 1.0);
 }
 """

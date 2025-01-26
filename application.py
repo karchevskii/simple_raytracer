@@ -2,7 +2,7 @@ import glfw
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 import numpy as np
-from fragment_shader import FRAGMENT_SHADER
+from test_shader import FRAGMENT_SHADER
 from vertex_shader import VERTEX_SHADER
 from utils import mouse_callback
 from camera import Camera
@@ -13,7 +13,7 @@ class Application:
         self.width = width
         self.height = height
         self.title = title
-        self.camera = Camera(position=[0.0, 0.0, -2.0])
+        self.camera = Camera(position=[-1.5, 0.0, -2.0])
         self.lastX = width / 2
         self.lastY = height / 2
         self.first_mouse = True
@@ -79,10 +79,10 @@ class Application:
 
     def init_lights(self):
         self.lights = [
-            Light(position=[5.0, 5.0, -10.0], color=[1.0, 1.0, 1.0]),
-            Light(position=[-5.0, 5.0, -10.0], color=[1.0, 0.5, 0.0]),
-            Light(position=[0.0, 5.0, 0.0], color=[0.0, 0.5, 1.0]),
-            Light(position=[-5.0, 5.0, 0.0], color=[1.0, 0.5, 1.0]),
+            Light(position=[5.0, 5.0, -10.0], color=[0.4, 0.4, 0.4]),
+            Light(position=[-5.0, 100.0, 0.0], color=[0.3, 0.5, 0.5]),
+            Light(position=[0.0, 5.0, 0.0], color=[0.5, 0.5, 0.5]),
+            Light(position=[-5.0, 5.0, 0.0], color=[0.2, 0.2, 0.1]),
             Light(position=[0.0, 5.0, 0.0], color=[0.3, 0.1, 1.0]),
         ]
         self.light_uniforms = []
