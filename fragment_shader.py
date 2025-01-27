@@ -37,7 +37,7 @@ struct Plane {
     float reflectivity;
 };
 
-// Scene data (we'll fill these in initScene)
+// Scene data (spheres and plane)
 Sphere spheres[NUM_SPHERES];
 Plane plane;
 int maxBounces = 6;
@@ -51,6 +51,7 @@ vec3 getSkyColor(vec3 rd) {
     return mix(vec3(0.5, 0.6, 0.8), vec3(0.0, 0.0, 0.3), t);
 }
 
+// ro = ray origin, rd = ray direction
 float sphereIntersection(vec3 ro, vec3 rd, Sphere sphere, out vec3 hitNormal) {
     vec3 oc = ro - sphere.center;
     float b = dot(oc, rd);
@@ -111,7 +112,7 @@ float fresnelSchlick(vec3 rd, vec3 n, float iorIn, float iorOut, out bool totalI
 
 // This is a simple reflection function that does a single bounce.
 vec3 computeReflectionColor(vec3 ro, vec3 rd) {
-    // We do a simple trace: find the nearest object.
+    // Find the nearest object.
     float nearestT = -1.0;
     vec3 hitNormal = vec3(0.0);
     vec3 hitColor  = vec3(0.0);
@@ -417,10 +418,6 @@ void initScene() {
         );
     }
 
-
-
-
-
     // Plane
     plane = Plane(
         vec3(0.0, -1.0, 0.0), // point
@@ -444,7 +441,7 @@ void main(){
     uv *= focal;
     vec3 rd = normalize(camera_dir + vec3(uv, 0.0));
 
-    // Trace!
+    // Trace
     vec3 finalColor = traceRay(ro, rd);
     FragColor = vec4(finalColor, 1.0);
 }
