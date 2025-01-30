@@ -40,7 +40,7 @@ struct Plane {
 // Scene data (spheres and plane)
 Sphere spheres[NUM_SPHERES];
 Plane plane;
-int maxBounces = 10;
+int maxBounces = 6;
 
 // Basic ambient
 vec3 ambient = vec3(0.05);

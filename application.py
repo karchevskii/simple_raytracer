@@ -9,7 +9,7 @@ from camera import Camera
 from light import Light
 
 class Application:
-    def __init__(self, width=800, height=600, title=""):
+    def __init__(self, width=1200, height=800, title=""):
         self.width = width
         self.height = height
         self.title = title
