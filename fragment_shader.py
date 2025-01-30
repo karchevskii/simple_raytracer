@@ -157,7 +157,7 @@ vec3 computeReflectionColor(vec3 ro, vec3 rd) {
     vec3 totalDiffuse = vec3(0.0);
     for (int l = 0; l < NUM_LIGHTS; l++) {
         vec3 lightDir = normalize(lights[l].position - hitPos);
-        // check shadow quickly
+        // check shadow
         float shadow = 1.0;
         // sphere shadow check
         for (int j = 0; j < NUM_SPHERES; j++) {
@@ -267,8 +267,7 @@ vec3 traceRay(vec3 ro, vec3 rd) {
                 totalDiffuse += diff * lights[l].color;
             }
             vec3 lighting = totalDiffuse * hitColor + ambient;
-            // add this surface's direct shading to the accumulation
-            colorAccum += attenuation * lighting;
+            colorAccum += attenuation * lighting; // add direct lighting
         }
 
         // Reflection / Refraction logic
@@ -277,7 +276,7 @@ vec3 traceRay(vec3 ro, vec3 rd) {
 
         // If object is transparent
         if (hitTransp > 0.0) {
-            // PARTIAL REFLECTION: do a quick reflection sample.
+            // partial reflection
             if (!totalInternal && kr > 0.0) {
                 vec3 reflectDir = reflect(rd, hitNormal);
                 vec3 reflectOrigin = hitPos + reflectDir * 0.001;
@@ -290,7 +289,7 @@ vec3 traceRay(vec3 ro, vec3 rd) {
                 kr = 1.0;
             }
 
-            // Now continue the main path as refraction if not TIR
+            // Refraction
             if (kr < 1.0) {
                 // Beer–Lambert
                 float distInMedium = nearestT; // approximate
@@ -330,7 +329,7 @@ vec3 traceRay(vec3 ro, vec3 rd) {
             rd = reflectDir;
         }
         else {
-            // Opaque and not reflective => no further bounces, we are done
+            // Opaque and not reflective => no further bounces
             break;
         }
     } // end bounce loop
