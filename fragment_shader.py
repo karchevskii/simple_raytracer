@@ -40,7 +40,7 @@ struct Plane {
 // Scene data (spheres and plane)
 Sphere spheres[NUM_SPHERES];
 Plane plane;
-int maxBounces = 6;
+int maxBounces = 10;
 
 // Basic ambient
 vec3 ambient = vec3(0.05);
@@ -363,7 +363,7 @@ void initScene() {
         vec3(0.0, -0.5, 3.0), // center
         0.5,                 // radius
         vec3(0.9, 0.9, 0.9), // color
-        0.2,  // reflectivity
+        0.9,  // reflectivity
         0.95, // transparency
         0.87,  // ior
         vec3(0.0) // absorption
@@ -372,7 +372,7 @@ void initScene() {
         vec3(2.0, -0.3, 3.0),
         0.7,
         vec3(0.7, 0.6, 0.5),
-        0.1,  // reflectivity
+        0.9,  // reflectivity
         0.95, // transparency
         0.87,  // ior
         vec3(0.0)
